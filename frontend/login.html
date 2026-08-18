@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ExamGuard — Login</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body class="auth-page">
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  <div class="auth-card">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <span class="logo-name">ExamGuard</span>
+    </div>
+
+    <h1>Welcome back</h1>
+    <p class="subtitle">Sign in to your account to continue</p>
+
+    <div class="alert alert-error" id="err-msg"></div>
+    <div class="alert alert-success" id="ok-msg"></div>
+
+    <form id="loginForm">
+      <div class="field">
+        <label>Email address</label>
+        <input type="email" id="email" placeholder="you@university.edu" required/>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="password" placeholder="••••••••" required/>
+      </div>
+      <button class="btn-full" type="submit" id="loginBtn">
+        <span id="btn-text">Sign In</span>
+        <div class="btn-loader" id="btn-loader"></div>
+      </button>
+    </form>
+
+    <div class="api-info">
+      Backend: <code id="api-url">—</code>
+      <button class="link-btn" onclick="changeAPI()">change</button>
+    </div>
+
+    <div class="divider">or</div>
+    <div class="link-row">Don't have an account? <a href="register.html">Register here</a></div>
+  </div>
+
+<script src="config.js"></script>
+<script>
+  document.getElementById('api-url').textContent = API_BASE;
+
+  function changeAPI() {
+    const u = prompt('Enter Cloudflare URL:', API_BASE);
+    if (u) { localStorage.setItem('api_base', u.trim()); location.reload(); }
+  }
+
+  const form = document.getElementById('loginForm');
+  const errMsg = document.getElementById('err-msg');
+  const okMsg = document.getElementById('ok-msg');
+  const btnText = document.getElementById('btn-text');
+  const btnLoader = document.getElementById('btn-loader');
+  const loginBtn = document.getElementById('loginBtn');
+
+  function showErr(msg) { errMsg.textContent = msg; errMsg.style.display = 'block'; okMsg.style.display = 'none'; }
+  function showOk(msg) { okMsg.textContent = msg; okMsg.style.display = 'block'; errMsg.style.display = 'none'; }
+  function loading(on) {
+    loginBtn.disabled = on;
+    btnText.style.display = on ? 'none' : 'inline';
+    btnLoader.style.display = on ? 'block' : 'none';
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errMsg.style.display = 'none';
+    loading(true);
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'bypass-tunnel-reminder': 'true' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Login failed');
+      localStorage.setItem('token', data.access_token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      showOk('Login successful! Redirecting...');
+      setTimeout(() => {
+        const role = data.user.role;
+        location.href = role === 'admin' ? 'dashboard_admin.html'
+                      : role === 'teacher' ? 'dashboard_teacher.html'
+                      : 'dashboard_student.html';
+      }, 800);
+    } catch (err) {
+      showErr(err.message);
+    } finally { loading(false); }
+  });
+</script>
+</body>
+</html>

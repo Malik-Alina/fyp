@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ExamGuard — Teacher Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="styles.css"/>
+  <style>
+    /* Teacher-specific badge color */
+    .role-badge.teacher { background: rgba(52,211,153,.15); color: var(--teacher); }
+    /* Violations table */
+    .viol-cell { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; }
+    .viol-no-face { background: rgba(248,113,113,.12); color: var(--danger); }
+    .viol-multi { background: rgba(245,158,11,.12); color: var(--warn); }
+    .viol-tab { background: rgba(79,142,247,.12); color: var(--accent); }
+  </style>
+</head>
+<body>
+<nav class="topnav">
+  <div class="nav-logo">ExamGuard</div>
+  <div class="nav-right">
+    <span class="nav-user" id="nav-user"></span>
+    <span class="role-badge teacher">Teacher</span>
+    <button class="btn-nav" onclick="logout()">Log out</button>
+  </div>
+</nav>
+<div class="layout">
+  <div class="sidebar teacher">
+    <h3>Navigation</h3>
+    <div class="nav-item active" id="nav-dashboard" onclick="showPage('dashboard',this)">🏠 Dashboard</div>
+    <div class="nav-item" id="nav-create" onclick="showPage('create',this)">➕ Create Exam</div>
+    <div class="nav-item" id="nav-exams" onclick="showPage('exams',this);loadExams()">📋 My Exams</div>
+    <div class="nav-item" onclick="location.href='analytics.html'">📊 Analytics</div>
+    <div class="nav-item" onclick="location.href='live_monitor.html'" style="margin-top:8px;background:rgba(248,113,113,.08);color:var(--danger)">🔴 Live Monitor</div>
+  </div>
+  <div class="main">
+
+    <!-- Dashboard -->
+    <div class="page active" id="page-dashboard">
+      <h1 id="greeting">Teacher Portal</h1>
+      <p class="sub">Manage exams, questions, and view student results with proctoring data.</p>
+
+      <div id="live-alert" style="display:none;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.3);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="width:10px;height:10px;border-radius:50%;background:var(--danger);animation:pulse 1.2s ease infinite;display:inline-block"></span>
+          <div>
+            <div style="font-size:14px;font-weight:500;color:var(--danger)"><span id="live-count">0</span> student(s) currently in an exam</div>
+            <div style="font-size:12px;color:var(--muted)">Click Live Monitor to watch in real time</div>
+          </div>
+        </div>
+        <button class="btn-xs" style="border-color:var(--danger);color:var(--danger)" onclick="location.href='live_monitor.html'">Open Live Monitor →</button>
+      </div>
+      <style>@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}</style>
+      <div class="stats">
+        <div class="stat-card"><div class="stat-num" id="s-exams">—</div><div class="stat-label">Exams created</div></div>
+        <div class="stat-card"><div class="stat-num" id="s-questions">—</div><div class="stat-label">Total questions</div></div>
+        <div class="stat-card"><div class="stat-num" id="s-active">—</div><div class="stat-label">Active exams</div></div>
+      </div>
+      <div id="dash-list"></div>
+    </div>
+
+    <!-- Create Exam -->
+    <div class="page" id="page-create">
+      <h1>Create Exam</h1>
+      <p class="sub">Step 1: set details. Step 2: add MCQ questions.</p>
+      <div class="form-card" id="step1">
+        <h2>Step 1 — Exam Details</h2>
+        <div class="alert alert-error" id="e-err"></div>
+        <div class="alert alert-success" id="e-ok"></div>
+        <div class="field"><label>Title *</label><input type="text" id="e-title" placeholder="e.g. Python Basics Quiz"/></div>
+        <div class="field"><label>Description</label><textarea id="e-desc" rows="2" placeholder="Brief description"></textarea></div>
+        <div class="row-2">
+          <div class="field"><label>Duration (minutes) *</label><input type="number" id="e-dur" placeholder="30" min="2"/></div>
+          <div class="field"><label>Total Marks *</label><input type="number" id="e-marks" placeholder="10" min="1"/></div>
+        </div>
+        <button class="btn-primary green" onclick="createExam()" id="create-btn">Create Exam →</button>
+      </div>
+      <div class="form-card" id="step2" style="display:none">
+        <h2>Step 2 — Add MCQ Questions &nbsp;<span id="qcount" style="font-size:13px;font-weight:400;color:var(--muted)">(0 added)</span></h2>
+        <div class="alert alert-error" id="q-err"></div>
+        <div class="alert alert-success" id="q-ok"></div>
+        <div class="field"><label>Question *</label><input type="text" id="q-text" placeholder="Type your question..."/></div>
+        <div class="row-2">
+          <div class="field"><label>Option A *</label><input type="text" id="q-a"/></div>
+          <div class="field"><label>Option B *</label><input type="text" id="q-b"/></div>
+          <div class="field"><label>Option C *</label><input type="text" id="q-c"/></div>
+          <div class="field"><label>Option D *</label><input type="text" id="q-d"/></div>
+        </div>
+        <div class="field">
+          <label>Correct Answer *</label>
+          <select id="q-ans"><option value="">— Select —</option><option value="a">A</option><option value="b">B</option><option value="c">C</option><option value="d">D</option></select>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn-primary green" onclick="addQuestion()" id="add-btn">+ Add Question</button>
+          <button class="btn-xs" onclick="showPage('exams',document.getElementById('nav-exams'));loadExams()">✅ Finish — View Exams</button>
+        </div>
+        <div id="q-list" style="margin-top:18px"></div>
+      </div>
+    </div>
+
+    <!-- My Exams -->
+    <div class="page" id="page-exams">
+      <h1>My Exams</h1>
+      <p class="sub">View results and proctoring violations.</p>
+      <div id="exams-list"><div class="empty">Loading...</div></div>
+    </div>
+
+    <!-- Results -->
+    <div class="page" id="page-results">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px">
+        <button class="btn-xs" onclick="showPage('exams',document.getElementById('nav-exams'));loadExams()">← Back</button>
+        <h1 id="res-title" style="margin:0;font-size:22px">Results</h1>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-bottom:18px">
+        <button class="btn-xs blue" id="tab-scores" onclick="switchTab('scores')">📊 Scores</button>
+        <button class="btn-xs" id="tab-violations" onclick="switchTab('violations')">🚨 Violations (Module 3)</button>
+      </div>
+
+      <div id="tab-content-scores"></div>
+      <div id="tab-content-violations" style="display:none"></div>
+    </div>
+
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+  const user = requireAuth(['teacher','admin']);
+  if (user) {
+    document.getElementById('nav-user').textContent = user.name;
+    document.getElementById('greeting').textContent = `Welcome, ${user.name.split(' ')[0]}`;
+  }
+
+  let currentExamId = null, qCount = 0, viewingExamId = null;
+
+  function showPage(name, el) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById('page-' + name).classList.add('active');
+    if (el) el.classList.add('active');
+  }
+  function showErr(id, msg) { const el = document.getElementById(id); el.textContent = msg; el.style.display = 'block'; }
+  function showOk(id, msg) { const el = document.getElementById(id); el.textContent = msg; el.style.display = 'block'; }
+  function hideAlert(id) { document.getElementById(id).style.display = 'none'; }
+
+  async function loadDashboard() {
+    try {
+      const r = await fetch(`${API_BASE}/exam/list`, { headers: authHeaders() });
+      const exams = (await r.json()).exams || [];
+      document.getElementById('s-exams').textContent = exams.length;
+      document.getElementById('s-questions').textContent = exams.reduce((s,e) => s + (e.q_count||0), 0);
+      document.getElementById('s-active').textContent = exams.filter(e => e.is_active).length;
+      // Also fetch live stats
+      try {
+        const lr = await fetch(`${API_BASE}/live/stats`, { headers: authHeaders() });
+        const ls = await lr.json();
+        if (ls.active_students > 0) {
+          document.getElementById('live-count').textContent = ls.active_students;
+          document.getElementById('live-alert').style.display = 'flex';
+        }
+      } catch(e) {}
+      const wrap = document.getElementById('dash-list');
+      if (!exams.length) { wrap.innerHTML = '<div class="empty">No exams yet — click Create Exam to start.</div>'; return; }
+      wrap.innerHTML = `<div class="section-label" style="margin-bottom:14px">Recent exams</div>` + exams.slice(0,5).map(e => `
+        <div class="exam-row">
+          <div><div class="exam-title-row">${e.title}<span class="badge ${e.is_active?'on':'off'}">${e.is_active?'Active':'Inactive'}</span></div>
+          <div class="exam-meta-row">${e.duration}min · ${e.total_marks} marks · ${e.q_count} Qs</div></div>
+          <button class="btn-xs green" onclick="viewResults(${e.exam_id},'${e.title.replace(/'/g,"\\'")}')">Results</button>
+        </div>`).join('');
+    } catch(e) { console.error(e); }
+  }
+
+  async function loadExams() {
+    const wrap = document.getElementById('exams-list');
+    wrap.innerHTML = '<div class="empty">Loading...</div>';
+    try {
+      const r = await fetch(`${API_BASE}/exam/list`, { headers: authHeaders() });
+      const exams = (await r.json()).exams || [];
+      if (!exams.length) { wrap.innerHTML = '<div class="empty">No exams yet.</div>'; return; }
+      wrap.innerHTML = exams.map(e => `
+        <div class="exam-row">
+          <div><div class="exam-title-row">${e.title}<span class="badge ${e.is_active?'on':'off'}">${e.is_active?'Active':'Inactive'}</span></div>
+          <div class="exam-meta-row">${e.duration}min · ${e.total_marks} marks · ${e.q_count} Qs · ${e.created_at?.slice(0,10)}</div></div>
+          <div class="exam-actions">
+            <button class="btn-xs" onclick="toggleExam(${e.exam_id})">${e.is_active?'Deactivate':'Activate'}</button>
+            <button class="btn-xs green" onclick="viewResults(${e.exam_id},'${e.title.replace(/'/g,"\\'")}')">Results</button>
+          </div>
+        </div>`).join('');
+    } catch(e) { wrap.innerHTML = '<div class="empty">Failed to load.</div>'; }
+  }
+
+  async function createExam() {
+    hideAlert('e-err'); hideAlert('e-ok');
+    const title = document.getElementById('e-title').value.trim();
+    const desc = document.getElementById('e-desc').value.trim();
+    const dur = document.getElementById('e-dur').value;
+    const marks = document.getElementById('e-marks').value;
+    if (!title || !dur || !marks) return showErr('e-err','Please fill all required fields');
+    document.getElementById('create-btn').disabled = true;
+    try {
+      const r = await fetch(`${API_BASE}/exam/create`, {
+        method:'POST', headers: authHeaders(),
+        body: JSON.stringify({ title, description:desc, duration:+dur, total_marks:+marks })
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.message);
+      currentExamId = data.exam_id; qCount = 0;
+      showOk('e-ok', `✅ Exam created (ID: ${currentExamId}) — now add questions below`);
+      document.getElementById('step1').style.opacity = '0.5';
+      document.getElementById('step1').style.pointerEvents = 'none';
+      document.getElementById('step2').style.display = 'block';
+    } catch(e) { showErr('e-err', e.message); document.getElementById('create-btn').disabled = false; }
+  }
+
+  async function addQuestion() {
+    hideAlert('q-err'); hideAlert('q-ok');
+    const text = document.getElementById('q-text').value.trim();
+    const a = document.getElementById('q-a').value.trim();
+    const b = document.getElementById('q-b').value.trim();
+    const c = document.getElementById('q-c').value.trim();
+    const d = document.getElementById('q-d').value.trim();
+    const ans = document.getElementById('q-ans').value;
+    if (!text||!a||!b||!c||!d||!ans) return showErr('q-err','Fill all fields and select correct answer');
+    document.getElementById('add-btn').disabled = true;
+    try {
+      const r = await fetch(`${API_BASE}/exam/${currentExamId}/question`, {
+        method:'POST', headers: authHeaders(),
+        body: JSON.stringify({ question_text:text, option_a:a, option_b:b, option_c:c, option_d:d, correct_ans:ans })
+      });
+      if (!r.ok) throw new Error((await r.json()).message);
+      qCount++;
+      document.getElementById('qcount').textContent = `(${qCount} added)`;
+      showOk('q-ok', `✅ Question ${qCount} added`);
+      document.getElementById('q-list').innerHTML += `<div class="q-item"><div class="q-num">Q${qCount}</div><div>${text}</div><div class="q-opts"><span class="${ans==='a'?'correct':''}">A: ${a}</span><span class="${ans==='b'?'correct':''}">B: ${b}</span><span class="${ans==='c'?'correct':''}">C: ${c}</span><span class="${ans==='d'?'correct':''}">D: ${d}</span></div></div>`;
+      ['q-text','q-a','q-b','q-c','q-d'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('q-ans').value = '';
+      document.getElementById('q-text').focus();
+    } catch(e) { showErr('q-err', e.message); }
+    finally { document.getElementById('add-btn').disabled = false; }
+  }
+
+  async function toggleExam(id) {
+    await fetch(`${API_BASE}/exam/${id}/toggle`, { method:'POST', headers: authHeaders() });
+    loadExams();
+  }
+
+  async function viewResults(examId, title) {
+    showPage('results', null);
+    viewingExamId = examId;
+    document.getElementById('res-title').textContent = `Results — ${title}`;
+    switchTab('scores');
+  }
+
+  function switchTab(tab) {
+    document.getElementById('tab-scores').classList.toggle('blue', tab === 'scores');
+    document.getElementById('tab-violations').classList.toggle('blue', tab === 'violations');
+    document.getElementById('tab-content-scores').style.display = tab === 'scores' ? 'block' : 'none';
+    document.getElementById('tab-content-violations').style.display = tab === 'violations' ? 'block' : 'none';
+    if (tab === 'scores') loadScores();
+    else loadViolations();
+  }
+
+  async function loadScores() {
+    const wrap = document.getElementById('tab-content-scores');
+    wrap.innerHTML = '<div class="empty">Loading...</div>';
+    try {
+      const r = await fetch(`${API_BASE}/exam/${viewingExamId}/results`, { headers: authHeaders() });
+      const results = (await r.json()).results || [];
+      if (!results.length) { wrap.innerHTML = '<div class="empty">No submissions yet.</div>'; return; }
+      wrap.innerHTML = `<table><thead><tr><th>#</th><th>Student</th><th>Score</th><th>%</th><th>Status</th><th>Submitted</th></tr></thead><tbody>
+        ${results.map((r,i) => { const pct = Math.round(r.score/r.total_marks*100); return `<tr><td>${i+1}</td><td>${r.name}</td><td>${r.score}/${r.total_marks}</td><td>${pct}%</td><td class="${pct>=50?'pass':'fail'}">${pct>=50?'✅ Pass':'❌ Fail'}</td><td>${r.submitted_at?.slice(0,16)}</td></tr>`; }).join('')}
+      </tbody></table>`;
+    } catch(e) { wrap.innerHTML = '<div class="empty">Failed to load.</div>'; }
+  }
+
+  async function loadViolations() {
+    const wrap = document.getElementById('tab-content-violations');
+    wrap.innerHTML = '<div class="empty">Loading proctoring data...</div>';
+    try {
+      const r = await fetch(`${API_BASE}/proctor/summary/${viewingExamId}`, { headers: authHeaders() });
+      const summary = (await r.json()).summary || [];
+      if (!summary.length) {
+        wrap.innerHTML = '<div class="empty"><div class="empty-icon">✅</div>No proctoring violations recorded.</div>';
+        return;
+      }
+      wrap.innerHTML = `
+        <div class="section-label" style="margin-bottom:14px">Violations per student</div>
+        <table>
+          <thead><tr><th>Student</th><th>Total</th><th>No Face</th><th>Multiple Faces</th><th>Tab Switch</th><th>Risk</th></tr></thead>
+          <tbody>${summary.map(s => {
+            const risk = s.total_violations >= 5 ? 'High' : s.total_violations >= 2 ? 'Medium' : 'Low';
+            const riskClass = risk === 'High' ? 'fail' : risk === 'Medium' ? '' : 'pass';
+            return `<tr>
+              <td>${s.name}<div style="font-size:11px;color:var(--muted)">${s.email}</div></td>
+              <td><strong>${s.total_violations}</strong></td>
+              <td>${s.no_face ? `<span class="viol-cell viol-no-face">${s.no_face}</span>` : '0'}</td>
+              <td>${s.multi_face ? `<span class="viol-cell viol-multi">${s.multi_face}</span>` : '0'}</td>
+              <td>${s.tab_switch ? `<span class="viol-cell viol-tab">${s.tab_switch}</span>` : '0'}</td>
+              <td class="${riskClass}">${risk}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>`;
+    } catch(e) { wrap.innerHTML = '<div class="empty">Failed to load violations.</div>'; }
+  }
+
+  loadDashboard();
+</script>
+</body>
+</html>

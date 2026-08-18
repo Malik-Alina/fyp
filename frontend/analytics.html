@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ExamGuard — Analytics</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="styles.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    .exam-picker { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 22px; display: flex; align-items: center; gap: 14px; }
+    .exam-picker label { margin: 0; }
+    .exam-picker select { max-width: 400px; }
+    .download-btns { display: flex; gap: 8px; margin-left: auto; }
+    .btn-download { padding: 8px 14px; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 13px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: all .15s; }
+    .btn-download:hover { border-color: var(--teacher); color: var(--teacher); }
+    .btn-download.pdf { background: var(--teacher); color: #000; border-color: var(--teacher); font-weight: 500; }
+    .btn-download.pdf:hover { background: var(--teacher2); }
+
+    .analytics-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 18px; margin-bottom: 24px; }
+    @media (max-width: 900px) { .analytics-grid { grid-template-columns: 1fr; } }
+    .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+    .chart-title { font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 16px; }
+    .chart-wrap { position: relative; height: 260px; }
+
+    .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+    .kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+    .kpi-num { font-family: 'DM Serif Display', serif; font-size: 30px; line-height: 1.2; }
+    .kpi-lbl { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .kpi-card.pass .kpi-num { color: var(--success); }
+    .kpi-card.high .kpi-num { color: var(--accent); }
+
+    .q-analysis { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 24px; }
+    .q-row { padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .q-row:last-child { border-bottom: none; }
+    .q-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13px; }
+    .q-text-short { flex: 1; padding-right: 12px; }
+    .q-pct { font-family: 'DM Serif Display', serif; font-size: 16px; }
+    .q-bar { height: 6px; background: var(--border); border-radius: 99px; overflow: hidden; }
+    .q-bar-fill { height: 100%; border-radius: 99px; transition: width .8s ease; }
+
+    .no-data { text-align: center; padding: 60px 20px; color: var(--muted); background: var(--surface); border: 1px dashed var(--border); border-radius: 12px; }
+    .no-data-icon { font-size: 40px; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+<nav class="topnav">
+  <div class="nav-logo">ExamGuard</div>
+  <div class="nav-right">
+    <span class="nav-user" id="nav-user"></span>
+    <span class="role-badge teacher">Teacher</span>
+    <button class="btn-nav" onclick="logout()">Log out</button>
+  </div>
+</nav>
+
+<div class="layout">
+  <div class="sidebar teacher">
+    <h3>Navigation</h3>
+    <div class="nav-item" onclick="location.href='dashboard_teacher.html'">🏠 Dashboard</div>
+    <div class="nav-item" onclick="location.href='dashboard_teacher.html'">➕ Create Exam</div>
+    <div class="nav-item" onclick="location.href='dashboard_teacher.html'">📋 My Exams</div>
+    <div class="nav-item active">📊 Analytics</div>
+    <div class="nav-item" onclick="location.href='live_monitor.html'" style="margin-top:8px;color:var(--danger)">🔴 Live Monitor</div>
+  </div>
+
+  <div class="main">
+    <h1>Analytics</h1>
+    <p class="sub">Score distribution, question difficulty, and downloadable reports.</p>
+
+    <div class="exam-picker">
+      <label>Exam:</label>
+      <select id="exam-select" onchange="loadAnalytics()"><option value="">Loading...</option></select>
+      <div class="download-btns" id="dl-btns" style="display:none">
+        <a class="btn-download pdf" id="pdf-link" href="#">⬇️ PDF Report</a>
+        <a class="btn-download" id="csv-link" href="#">⬇️ CSV</a>
+      </div>
+    </div>
+
+    <div id="content"></div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+  const user = requireAuth(['teacher','admin']);
+  if (user) document.getElementById('nav-user').textContent = user.name;
+
+  let currentAnalytics = null;
+  let charts = {};
+
+  async function loadExams() {
+    try {
+      const r = await fetch(`${API_BASE}/exam/list`, { headers: authHeaders() });
+      const exams = (await r.json()).exams || [];
+      const sel = document.getElementById('exam-select');
+      if (!exams.length) { sel.innerHTML = '<option>No exams yet</option>'; return; }
+      sel.innerHTML = '<option value="">— Select an exam —</option>' +
+        exams.map(e => `<option value="${e.exam_id}">${e.title} (${e.duration}min, ${e.total_marks} marks)</option>`).join('');
+    } catch(e) {
+      document.getElementById('exam-select').innerHTML = '<option>Error loading exams</option>';
+    }
+  }
+
+  async function loadAnalytics() {
+    const examId = document.getElementById('exam-select').value;
+    const content = document.getElementById('content');
+    document.getElementById('dl-btns').style.display = 'none';
+
+    if (!examId) {
+      content.innerHTML = '<div class="no-data"><div class="no-data-icon">📊</div>Select an exam above to see analytics</div>';
+      return;
+    }
+
+    content.innerHTML = '<div class="loading"><div class="spinner"></div>Loading analytics...</div>';
+    try {
+      const r = await fetch(`${API_BASE}/report/analytics/${examId}`, { headers: authHeaders() });
+      if (!r.ok) throw new Error('Failed to load');
+      const a = await r.json();
+      currentAnalytics = a;
+
+      if (a.total_attempts === 0) {
+        content.innerHTML = '<div class="no-data"><div class="no-data-icon">📭</div>No submissions yet for this exam.</div>';
+        return;
+      }
+
+      // Set download links (with auth via query param workaround — actually we need to fetch as blob)
+      document.getElementById('dl-btns').style.display = 'flex';
+      document.getElementById('pdf-link').onclick = (e) => { e.preventDefault(); downloadFile(`${API_BASE}/report/exam/${examId}.pdf`, `exam_report_${examId}.pdf`); };
+      document.getElementById('csv-link').onclick = (e) => { e.preventDefault(); downloadFile(`${API_BASE}/report/exam/${examId}.csv`, `exam_results_${examId}.csv`); };
+
+      render(a);
+    } catch(e) {
+      content.innerHTML = `<div class="no-data" style="color:var(--danger)">Failed to load: ${e.message}</div>`;
+    }
+  }
+
+  async function downloadFile(url, filename) {
+    try {
+      const r = await fetch(url, { headers: authHeaders() });
+      if (!r.ok) throw new Error(await r.text());
+      const blob = await r.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch(e) { alert('Download failed: ' + e.message); }
+  }
+
+  function render(a) {
+    const content = document.getElementById('content');
+    content.innerHTML = `
+      <div class="kpi-row">
+        <div class="kpi-card"><div class="kpi-num">${a.total_attempts}</div><div class="kpi-lbl">Total attempts</div></div>
+        <div class="kpi-card"><div class="kpi-num">${a.avg_percentage}%</div><div class="kpi-lbl">Average score</div></div>
+        <div class="kpi-card pass"><div class="kpi-num">${a.pass_rate}%</div><div class="kpi-lbl">Pass rate</div></div>
+        <div class="kpi-card high"><div class="kpi-num">${a.highest}</div><div class="kpi-lbl">Highest score</div></div>
+      </div>
+
+      <div class="analytics-grid">
+        <div class="chart-card">
+          <div class="chart-title">Score Distribution</div>
+          <div class="chart-wrap"><canvas id="chart-dist"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Pass vs Fail</div>
+          <div class="chart-wrap"><canvas id="chart-pass"></canvas></div>
+        </div>
+      </div>
+
+      <div class="analytics-grid" style="grid-template-columns:1fr 1fr">
+        <div class="chart-card">
+          <div class="chart-title">Violation Types</div>
+          <div class="chart-wrap"><canvas id="chart-viol"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Individual Student Reports</div>
+          <div style="max-height:260px;overflow-y:auto;padding-right:6px">
+            ${a.results.map((r, i) => {
+              const pct = Math.round(r.score / r.total_marks * 100);
+              const passed = pct >= 50;
+              return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+                <div style="flex:1">
+                  <div style="font-weight:500">${i+1}. ${r.name}</div>
+                  <div style="font-size:11px;color:var(--muted)">${r.email}</div>
+                </div>
+                <div style="text-align:right;margin-right:12px">
+                  <div class="${passed?'pass':'fail'}" style="font-size:13px;font-weight:500">${pct}%</div>
+                  <div style="font-size:11px;color:var(--muted)">${r.score}/${r.total_marks}</div>
+                </div>
+                <button class="btn-xs" onclick="downloadStudent(${r.user_id}, '${r.name.replace(/'/g,"\\'")}', '${a.exam.exam_id}')">📄 PDF</button>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+
+      <div class="q-analysis">
+        <div class="chart-title" style="margin-bottom:14px">Question Difficulty (% who answered correctly)</div>
+        ${a.question_stats.map((q, i) => {
+          const color = q.correct_pct >= 70 ? 'var(--success)' : q.correct_pct >= 40 ? 'var(--warn)' : 'var(--danger)';
+          return `<div class="q-row">
+            <div class="q-header-row">
+              <div class="q-text-short"><strong>Q${i+1}.</strong> ${q.question_text}</div>
+              <div class="q-pct" style="color:${color}">${q.correct_pct}%</div>
+            </div>
+            <div class="q-bar"><div class="q-bar-fill" style="width:${q.correct_pct}%;background:${color}"></div></div>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">${q.correct_count} correct, ${q.incorrect_count} incorrect</div>
+          </div>`;
+        }).join('')}
+      </div>
+    `;
+
+    // Destroy old charts
+    Object.values(charts).forEach(c => c && c.destroy());
+    charts = {};
+
+    Chart.defaults.color = '#6b7280';
+    Chart.defaults.borderColor = '#1e2330';
+    Chart.defaults.font.family = 'DM Sans, sans-serif';
+
+    // Score distribution (bar)
+    charts.dist = new Chart(document.getElementById('chart-dist'), {
+      type: 'bar',
+      data: {
+        labels: Object.keys(a.score_distribution),
+        datasets: [{
+          data: Object.values(a.score_distribution),
+          backgroundColor: '#4f8ef7',
+          borderRadius: 6,
+          maxBarThickness: 60,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+      }
+    });
+
+    // Pass vs Fail (donut)
+    charts.pass = new Chart(document.getElementById('chart-pass'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Passed', 'Failed'],
+        datasets: [{
+          data: [a.pass_count, a.fail_count],
+          backgroundColor: ['#34d399', '#f87171'],
+          borderWidth: 0,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '65%',
+        plugins: { legend: { position: 'bottom' } }
+      }
+    });
+
+    // Violations (bar)
+    const vLabels = { no_face:'No Face', multiple_faces:'Multiple Faces', tab_switch:'Tab Switch', terminated_by_teacher:'Terminated' };
+    const vData = Object.entries(a.violation_stats || {});
+    charts.viol = new Chart(document.getElementById('chart-viol'), {
+      type: 'bar',
+      data: {
+        labels: vData.length ? vData.map(([k]) => vLabels[k] || k) : ['No violations'],
+        datasets: [{
+          data: vData.length ? vData.map(([,v]) => v) : [0],
+          backgroundColor: ['#f87171','#fbbf24','#4f8ef7','#8b5cf6'],
+          borderRadius: 6,
+          maxBarThickness: 50,
+        }]
+      },
+      options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+      }
+    });
+  }
+
+  async function downloadStudent(userId, name, examId) {
+    downloadFile(`${API_BASE}/report/student/${examId}/${userId}.pdf`, `report_${name.replace(/\s/g,'_')}.pdf`);
+  }
+
+  loadExams();
+</script>
+</body>
+</html>

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ExamGuard — My Results</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="styles.css"/>
+  <style>
+    .result-row { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 12px; display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: center; }
+    .result-info h3 { font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+    .result-meta { font-size: 12px; color: var(--muted); }
+    .result-score-wrap { display: flex; align-items: center; gap: 20px; }
+    .result-score { text-align: right; }
+    .result-num { font-family: 'DM Serif Display', serif; font-size: 24px; line-height: 1; }
+    .result-num.pass { color: var(--success); }
+    .result-num.fail { color: var(--danger); }
+    .result-pct { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .status-pill { display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 500; margin-top: 6px; }
+    .status-pill.pass { background: rgba(52,211,153,.15); color: var(--success); }
+    .status-pill.fail { background: rgba(248,113,113,.12); color: var(--danger); }
+
+    /* Summary cards */
+    .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 28px; }
+    @media (max-width: 700px) { .summary-grid { grid-template-columns: repeat(2, 1fr); } }
+  </style>
+</head>
+<body>
+<nav class="topnav">
+  <div class="nav-logo">ExamGuard</div>
+  <div class="nav-right">
+    <span class="nav-user" id="nav-user"></span>
+    <span class="role-badge">Student</span>
+    <button class="btn-nav" onclick="logout()">Log out</button>
+  </div>
+</nav>
+
+<div class="layout">
+  <div class="sidebar">
+    <h3>Navigation</h3>
+    <div class="nav-item" onclick="location.href='dashboard_student.html'">🏠 Home</div>
+    <div class="nav-item" onclick="location.href='dashboard_student.html'">📋 Available Exams</div>
+    <div class="nav-item active">🏆 My Results</div>
+  </div>
+
+  <div class="main">
+    <h1>My Results</h1>
+    <p class="sub">Your exam history and downloadable score reports.</p>
+
+    <div class="summary-grid">
+      <div class="stat-card"><div class="stat-num" id="s-total">—</div><div class="stat-label">Exams taken</div></div>
+      <div class="stat-card"><div class="stat-num" id="s-passed">—</div><div class="stat-label">Passed</div></div>
+      <div class="stat-card"><div class="stat-num" id="s-avg">—</div><div class="stat-label">Average score</div></div>
+      <div class="stat-card"><div class="stat-num" id="s-best">—</div><div class="stat-label">Best score</div></div>
+    </div>
+
+    <div id="results-list"><div class="loading"><div class="spinner"></div>Loading...</div></div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+  const user = requireAuth(['student']);
+  if (user) document.getElementById('nav-user').textContent = user.name;
+
+  async function downloadFile(url, filename) {
+    try {
+      const r = await fetch(url, { headers: authHeaders() });
+      if (!r.ok) throw new Error(await r.text());
+      const blob = await r.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch(e) { alert('Download failed: ' + e.message); }
+  }
+
+  function downloadReport(examId, examTitle) {
+    downloadFile(
+      `${API_BASE}/report/student/${examId}/${user.user_id}.pdf`,
+      `report_${examTitle.replace(/\s/g,'_')}.pdf`
+    );
+  }
+
+  async function load() {
+    const wrap = document.getElementById('results-list');
+    try {
+      const r = await fetch(`${API_BASE}/my/results`, { headers: authHeaders() });
+      const results = (await r.json()).results || [];
+
+      // Compute stats
+      document.getElementById('s-total').textContent = results.length;
+      const passed = results.filter(r => (r.score / r.total_marks) >= 0.5);
+      document.getElementById('s-passed').textContent = passed.length;
+      if (results.length) {
+        const pcts = results.map(r => (r.score / r.total_marks) * 100);
+        const avg = pcts.reduce((s,v) => s+v, 0) / pcts.length;
+        document.getElementById('s-avg').textContent = Math.round(avg) + '%';
+        document.getElementById('s-best').textContent = Math.max(...pcts).toFixed(0) + '%';
+      } else {
+        ['s-avg','s-best'].forEach(id => document.getElementById(id).textContent = '—');
+      }
+
+      if (!results.length) {
+        wrap.innerHTML = '<div class="empty"><div class="empty-icon">📭</div>You haven\'t taken any exams yet.</div>';
+        return;
+      }
+
+      wrap.innerHTML = results.map(r => {
+        const pct = Math.round(r.score / r.total_marks * 100);
+        const isPass = pct >= 50;
+        const safeTitle = r.exam_title.replace(/'/g,"\\'");
+        return `<div class="result-row">
+          <div class="result-info">
+            <h3>${r.exam_title}</h3>
+            <div class="result-meta">Submitted: ${new Date(r.submitted_at + 'Z').toLocaleString()} · Duration: ${r.duration} min</div>
+            <span class="status-pill ${isPass?'pass':'fail'}">${isPass ? '✅ Pass' : '❌ Fail'}</span>
+          </div>
+          <div class="result-score-wrap">
+            <div class="result-score">
+              <div class="result-num ${isPass?'pass':'fail'}">${pct}%</div>
+              <div class="result-pct">${r.score} / ${r.total_marks}</div>
+            </div>
+            <button class="btn-xs blue" onclick="downloadReport(${r.exam_id}, '${safeTitle}')">📄 Download PDF</button>
+          </div>
+        </div>`;
+      }).join('');
+    } catch(e) {
+      wrap.innerHTML = '<div class="empty">Failed to load results.</div>';
+    }
+  }
+
+  load();
+</script>
+</body>
+</html>

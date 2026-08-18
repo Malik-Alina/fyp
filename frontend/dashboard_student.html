@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ExamGuard — Student Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+<nav class="topnav">
+  <div class="nav-logo">ExamGuard</div>
+  <div class="nav-right">
+    <span class="nav-user" id="nav-user"></span>
+    <span class="role-badge">Student</span>
+    <button class="btn-nav" onclick="logout()">Log out</button>
+  </div>
+</nav>
+<div class="layout">
+  <div class="sidebar">
+    <h3>Navigation</h3>
+    <div class="nav-item active" id="nav-home" onclick="showPage('home',this)">🏠 Home</div>
+    <div class="nav-item" id="nav-exams" onclick="showPage('exams',this);loadExams()">📋 Available Exams</div>
+    <div class="nav-item" onclick="location.href='my_results.html'">🏆 My Results</div>
+  </div>
+  <div class="main">
+
+    <div class="page active" id="page-home">
+      <h1 id="greeting">Student Portal</h1>
+      <p class="sub">View available exams and start when you're ready. Webcam will be needed during the exam.</p>
+      <div class="stats">
+        <div class="stat-card"><div class="stat-num" id="s-available">—</div><div class="stat-label">Available exams</div></div>
+        <div class="stat-card"><div class="stat-num" id="s-taken">—</div><div class="stat-label">Exams taken</div></div>
+        <div class="stat-card"><div class="stat-num" id="s-questions">—</div><div class="stat-label">Total questions</div></div>
+      </div>
+      <div id="home-exams"></div>
+    </div>
+
+    <div class="page" id="page-exams">
+      <h1>Available Exams</h1>
+      <p class="sub">Click Start Exam to begin. Allow webcam access when prompted.</p>
+      <div id="exams-grid" class="exam-grid"></div>
+    </div>
+
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+  const user = requireAuth(['student']);
+  if (user) {
+    document.getElementById('nav-user').textContent = user.name;
+    document.getElementById('greeting').textContent = `Welcome, ${user.name.split(' ')[0]}`;
+  }
+
+  function showPage(name, el) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById('page-' + name).classList.add('active');
+    if (el) el.classList.add('active');
+  }
+
+  function examCardHTML(e) {
+    const safe = e.title.replace(/'/g,"\\'");
+    return `<div class="exam-card">
+      <div class="exam-name">${e.title}</div>
+      ${e.description ? `<div class="exam-desc">${e.description}</div>` : ''}
+      <div class="exam-pills">
+        <span class="pill">⏱ ${e.duration} min</span>
+        <span class="pill">📊 ${e.total_marks} marks</span>
+        <span class="pill">❓ ${e.q_count} questions</span>
+      </div>
+      <button class="btn-full" onclick="startExam(${e.exam_id},'${safe}',${e.duration})">Start Exam →</button>
+    </div>`;
+  }
+
+  async function loadHome() {
+    try {
+      const r = await fetch(`${API_BASE}/exam/list`, { headers: authHeaders() });
+      const exams = (await r.json()).exams || [];
+      document.getElementById('s-available').textContent = exams.length;
+      document.getElementById('s-questions').textContent = exams.reduce((s,e) => s + (e.q_count||0), 0);
+      // Fetch my results for real counters
+      try {
+        const myR = await fetch(`${API_BASE}/my/results`, { headers: authHeaders() });
+        const myResults = (await myR.json()).results || [];
+        document.getElementById('s-taken').textContent = myResults.length;
+      } catch(e) {
+        document.getElementById('s-taken').textContent = '—';
+      }
+      const wrap = document.getElementById('home-exams');
+      if (!exams.length) { wrap.innerHTML = '<div class="empty"><div class="empty-icon">📋</div>No exams available yet.</div>'; return; }
+      wrap.innerHTML = `<div class="section-label" style="margin-bottom:14px">Available Exams</div>
+        <div class="exam-grid">${exams.slice(0,6).map(examCardHTML).join('')}</div>`;
+    } catch(e) { console.error(e); }
+  }
+
+  async function loadExams() {
+    const grid = document.getElementById('exams-grid');
+    grid.innerHTML = '<div class="empty">Loading...</div>';
+    try {
+      const r = await fetch(`${API_BASE}/exam/list`, { headers: authHeaders() });
+      const exams = (await r.json()).exams || [];
+      if (!exams.length) { grid.innerHTML = '<div class="empty">No exams available.</div>'; return; }
+      grid.innerHTML = exams.map(examCardHTML).join('');
+    } catch(e) { grid.innerHTML = '<div class="empty">Failed to load.</div>'; }
+  }
+
+  function startExam(examId, title, duration) {
+    localStorage.setItem('current_exam', JSON.stringify({ examId, title, duration }));
+    location.href = 'exam.html';
+  }
+
+  loadHome();
+</script>
+</body>
+</html>

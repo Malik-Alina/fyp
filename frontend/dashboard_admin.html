@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ExamGuard — Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+<nav class="topnav">
+  <div class="nav-logo">ExamGuard</div>
+  <div class="nav-right">
+    <span class="nav-user" id="nav-user"></span>
+    <span class="role-badge admin">Admin</span>
+    <button class="btn-nav" onclick="logout()">Log out</button>
+  </div>
+</nav>
+<div class="main" style="padding:40px">
+  <h1 id="greeting">Admin Panel</h1>
+  <p class="sub">Admin features (manage all users, system settings) are planned for a future module.</p>
+
+  <div class="stats">
+    <div class="stat-card"><div class="stat-num">—</div><div class="stat-label">Total users</div></div>
+    <div class="stat-card"><div class="stat-num">—</div><div class="stat-label">Exams</div></div>
+    <div class="stat-card"><div class="stat-num">—</div><div class="stat-label">Violations logged</div></div>
+  </div>
+
+  <div class="empty"><div class="empty-icon">🛡️</div>Admin module coming soon</div>
+</div>
+
+<script src="config.js"></script>
+<script>
+  const user = requireAuth(['admin']);
+  if (user) {
+    document.getElementById('nav-user').textContent = user.name;
+    document.getElementById('greeting').textContent = `Admin: ${user.name.split(' ')[0]}`;
+  }
+</script>
+</body>
+</html>

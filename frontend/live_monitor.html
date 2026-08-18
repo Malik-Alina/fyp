@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ExamGuard — Live Monitor</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="styles.css"/>
+  <style>
+    /* ── Live monitor specific styles ── */
+    .live-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px}
+    .live-title{display:flex;align-items:center;gap:10px}
+    .live-title h1{margin:0}
+    .live-indicator{display:flex;align-items:center;gap:8px;padding:6px 14px;border-radius:99px;background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.3);font-size:13px;color:var(--danger);font-weight:500}
+    .live-dot{width:8px;height:8px;border-radius:50%;background:var(--danger);animation:pulse 1.2s ease infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+    /* Filter tabs */
+    .filter-bar{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+    .filter-tab{padding:6px 14px;border:1px solid var(--border);border-radius:99px;background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s}
+    .filter-tab:hover{border-color:var(--teacher);color:var(--teacher)}
+    .filter-tab.active{background:var(--teacher);border-color:var(--teacher);color:#000;font-weight:500}
+
+    /* Two-column layout: sessions grid + violations feed */
+    .live-layout{display:grid;grid-template-columns:1fr 340px;gap:20px}
+    @media (max-width: 1100px) { .live-layout{grid-template-columns:1fr} }
+
+    /* Sessions grid */
+    .session-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+    .session-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;cursor:pointer;transition:all .2s;position:relative}
+    .session-card:hover{border-color:var(--teacher);transform:translateY(-2px)}
+    .session-card.risky{border-color:var(--danger)}
+    .session-card.warn{border-color:var(--warn)}
+
+    .snap-wrap{position:relative;width:100%;aspect-ratio:4/3;background:#000;overflow:hidden}
+    .snap-wrap img{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+    .snap-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;text-align:center;padding:14px}
+    .snap-status{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;padding:3px 8px;border-radius:99px;backdrop-filter:blur(4px);display:flex;align-items:center;gap:4px}
+    .snap-status .live-dot{width:6px;height:6px}
+    .snap-warn{position:absolute;top:8px;right:8px;background:rgba(248,113,113,.9);color:#fff;font-size:10px;padding:3px 8px;border-radius:99px;font-weight:500}
+
+    .session-info{padding:12px 14px}
+    .session-name{font-size:14px;font-weight:500;margin-bottom:2px}
+    .session-exam{font-size:11px;color:var(--muted);margin-bottom:8px}
+    .session-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
+    .session-meta strong{color:var(--text)}
+    .viol-count{color:var(--danger);font-weight:500}
+    .viol-count.zero{color:var(--muted);font-weight:400}
+
+    /* Violations feed */
+    .feed-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;height:fit-content;position:sticky;top:80px;max-height:calc(100vh - 100px);overflow-y:auto}
+    .feed-title{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+    .feed-title::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--danger);animation:pulse 1.5s ease infinite}
+    .feed-item{padding:10px 12px;background:var(--bg);border-left:3px solid var(--border);border-radius:6px;margin-bottom:6px;font-size:12px}
+    .feed-item.no_face{border-left-color:var(--danger)}
+    .feed-item.multiple_faces{border-left-color:var(--warn)}
+    .feed-item.tab_switch{border-left-color:var(--accent)}
+    .feed-item.terminated_by_teacher{border-left-color:#8b5cf6}
+    .feed-student{font-weight:500;color:var(--text);margin-bottom:2px}
+    .feed-detail{color:var(--muted);font-size:11px}
+    .feed-time{color:var(--muted);font-size:10px;margin-top:2px}
+    .feed-empty{text-align:center;padding:24px;color:var(--muted);font-size:12px}
+
+    /* Modal (detailed view) */
+    .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:300;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}
+    .overlay.show{display:flex}
+    .modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;max-width:600px;width:100%;overflow:hidden}
+    .modal-close{position:absolute;top:30px;right:30px;background:rgba(0,0,0,.5);color:#fff;border:none;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px;z-index:10}
+    .modal-snap{position:relative;width:100%;aspect-ratio:4/3;background:#000}
+    .modal-snap img{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+    .modal-body{padding:24px}
+    .modal-name{font-family:'DM Serif Display',serif;font-size:22px;margin-bottom:4px}
+    .modal-sub{font-size:13px;color:var(--muted);margin-bottom:18px}
+    .modal-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
+    .modal-stat{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;text-align:center}
+    .modal-stat-val{font-family:'DM Serif Display',serif;font-size:20px}
+    .modal-stat-lbl{font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.8px}
+    .modal-actions{display:flex;gap:10px}
+    .btn-danger{padding:10px 20px;background:#ef4444;color:#fff;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;cursor:pointer;transition:background .2s}
+    .btn-danger:hover{background:#dc2626}
+
+    /* Stats bar */
+    .stats-bar{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px}
+    .stat-tile{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px}
+    .stat-tile-num{font-family:'DM Serif Display',serif;font-size:28px;line-height:1}
+    .stat-tile-lbl{font-size:12px;color:var(--muted);margin-top:4px}
+    .stat-tile.danger .stat-tile-num{color:var(--danger)}
+
+    .empty-live{text-align:center;padding:60px 20px;color:var(--muted);background:var(--surface);border:1px dashed var(--border);border-radius:12px}
+    .empty-live .empty-icon{font-size:48px;margin-bottom:16px}
+  </style>
+</head>
+<body>
+<nav class="topnav">
+  <div class="nav-logo">ExamGuard</div>
+  <div class="nav-right">
+    <span class="nav-user" id="nav-user"></span>
+    <span class="role-badge teacher">Teacher</span>
+    <button class="btn-nav" onclick="logout()">Log out</button>
+  </div>
+</nav>
+
+<div class="layout">
+  <div class="sidebar teacher">
+    <h3>Navigation</h3>
+    <div class="nav-item" onclick="location.href='dashboard_teacher.html'">🏠 Dashboard</div>
+    <div class="nav-item" onclick="location.href='dashboard_teacher.html'">➕ Create Exam</div>
+    <div class="nav-item" onclick="location.href='dashboard_teacher.html'">📋 My Exams</div>
+    <div class="nav-item active">🔴 Live Monitor</div>
+  </div>
+
+  <div class="main">
+    <div class="live-header">
+      <div class="live-title">
+        <h1>Live Monitor</h1>
+      </div>
+      <div class="live-indicator"><span class="live-dot"></span>Auto-refresh: 3s</div>
+    </div>
+    <p class="sub">See students currently taking exams in real time. Click any snapshot for details.</p>
+
+    <div class="stats-bar">
+      <div class="stat-tile">
+        <div class="stat-tile-num" id="s-active">0</div>
+        <div class="stat-tile-lbl">Active students</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-tile-num" id="s-exams">0</div>
+        <div class="stat-tile-lbl">Ongoing exams</div>
+      </div>
+      <div class="stat-tile danger">
+        <div class="stat-tile-num" id="s-viol">0</div>
+        <div class="stat-tile-lbl">Live violations</div>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <div class="filter-tab active" data-filter="all" onclick="setFilter('all',this)">All Students</div>
+      <div class="filter-tab" data-filter="violations" onclick="setFilter('violations',this)">With Violations</div>
+      <div class="filter-tab" data-filter="idle" onclick="setFilter('idle',this)">Idle (no ping &gt;30s)</div>
+    </div>
+
+    <div class="live-layout">
+      <div>
+        <div id="session-grid" class="session-grid"></div>
+      </div>
+      <div class="feed-panel">
+        <div class="feed-title">Recent Violations</div>
+        <div id="feed-list"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Modal (detail view) -->
+<div class="overlay" id="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal" style="position:relative">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div class="modal-snap">
+      <img id="modal-snap-img" src="" alt=""/>
+    </div>
+    <div class="modal-body">
+      <div class="modal-name" id="modal-name">—</div>
+      <div class="modal-sub" id="modal-sub">—</div>
+      <div class="modal-stats">
+        <div class="modal-stat"><div class="modal-stat-val" id="modal-face">—</div><div class="modal-stat-lbl">Faces</div></div>
+        <div class="modal-stat"><div class="modal-stat-val" id="modal-viol">—</div><div class="modal-stat-lbl">Violations</div></div>
+        <div class="modal-stat"><div class="modal-stat-val" id="modal-time">—</div><div class="modal-stat-lbl">Elapsed</div></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="closeModal()">Close</button>
+        <button class="btn-danger" id="terminate-btn" onclick="terminateSession()">🛑 Terminate Exam</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+  const user = requireAuth(['teacher','admin']);
+  if (user) { document.getElementById('nav-user').textContent = user.name; }
+
+  let allSessions = [];
+  let filter = 'all';
+  let currentModal = null; // { exam_id, student_id }
+  let refreshInterval = null;
+  let snapRefreshInterval = null;
+
+  function setFilter(f, el) {
+    filter = f;
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    renderGrid();
+  }
+
+  function fmtTime(sec) {
+    const m = Math.floor(sec/60);
+    const s = sec % 60;
+    return `${m}m ${s}s`;
+  }
+
+  function fmtAgo(sec) {
+    if (sec < 5) return 'just now';
+    if (sec < 60) return `${sec}s ago`;
+    const m = Math.floor(sec/60);
+    return `${m}m ago`;
+  }
+
+  function fmtViolationType(t) {
+    return { no_face: 'No face detected', multiple_faces: 'Multiple faces', tab_switch: 'Tab switch', terminated_by_teacher: 'Terminated by teacher' }[t] || t;
+  }
+
+  function fmtViolationIcon(t) {
+    return { no_face: '👤', multiple_faces: '👥', tab_switch: '🌐', terminated_by_teacher: '🛑' }[t] || '⚠️';
+  }
+
+  // ── Refresh cycle ────────────────────────────────
+  async function refresh() {
+    try {
+      const [statsR, sessR, violR] = await Promise.all([
+        fetch(`${API_BASE}/live/stats`, { headers: authHeaders() }),
+        fetch(`${API_BASE}/live/sessions`, { headers: authHeaders() }),
+        fetch(`${API_BASE}/live/violations`, { headers: authHeaders() })
+      ]);
+      const stats = await statsR.json();
+      const sessData = await sessR.json();
+      const violData = await violR.json();
+
+      document.getElementById('s-active').textContent = stats.active_students || 0;
+      document.getElementById('s-exams').textContent = stats.active_exams || 0;
+      document.getElementById('s-viol').textContent = stats.total_live_violations || 0;
+
+      allSessions = sessData.sessions || [];
+      renderGrid();
+      renderFeed(violData.violations || []);
+    } catch(e) { console.warn('Refresh failed:', e); }
+  }
+
+  function renderGrid() {
+    let sessions = allSessions;
+    if (filter === 'violations') sessions = sessions.filter(s => s.violations > 0);
+    else if (filter === 'idle') sessions = sessions.filter(s => s.status === 'idle');
+
+    const grid = document.getElementById('session-grid');
+    if (!sessions.length) {
+      grid.innerHTML = `<div class="empty-live" style="grid-column:1/-1">
+        <div class="empty-icon">👀</div>
+        <div style="font-size:15px;margin-bottom:6px">No active sessions</div>
+        <div style="font-size:13px">Students will appear here as soon as they start an exam</div>
+      </div>`;
+      return;
+    }
+
+    grid.innerHTML = sessions.map(s => {
+      const riskClass = s.violations >= 3 ? 'risky' : s.violations >= 1 ? 'warn' : '';
+      const snapUrl = s.has_snapshot
+        ? `${API_BASE}/live/snapshot/${s.exam_id}/${s.student_id}`
+        : null;
+      return `<div class="session-card ${riskClass}" onclick="openModal(${s.exam_id}, ${s.student_id})">
+        <div class="snap-wrap">
+          ${snapUrl
+            ? `<img src="" data-snap-url="${snapUrl}" alt="webcam" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
+               <div class="snap-placeholder" style="display:none">Loading...</div>`
+            : `<div class="snap-placeholder">No snapshot yet<br><span style="font-size:11px">waiting for first check</span></div>`
+          }
+          <div class="snap-status">
+            <span class="live-dot"></span>${fmtAgo(s.last_seen_seconds_ago)}
+          </div>
+          ${s.violations > 0 ? `<div class="snap-warn">⚠️ ${s.violations}</div>` : ''}
+        </div>
+        <div class="session-info">
+          <div class="session-name">${s.student_name}</div>
+          <div class="session-exam">${s.exam_title}</div>
+          <div class="session-meta">
+            <span>⏱ <strong>${fmtTime(s.elapsed_seconds)}</strong></span>
+            <span>👤 <strong>${s.face_count !== null && s.face_count !== undefined ? s.face_count : '—'}</strong> face</span>
+            <span class="viol-count ${s.violations===0?'zero':''}">⚠️ ${s.violations}</span>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Fetch snapshots (they're base64 JSON, not direct URLs, so we need auth)
+    document.querySelectorAll('img[data-snap-url]').forEach(async img => {
+      const url = img.dataset.snapUrl;
+      try {
+        const r = await fetch(url, { headers: authHeaders() });
+        if (!r.ok) throw new Error();
+        const d = await r.json();
+        const snap = d.snapshot;
+        img.src = snap.startsWith('data:') ? snap : `data:image/jpeg;base64,${snap}`;
+      } catch(e) {
+        img.style.display = 'none';
+        if (img.nextElementSibling) img.nextElementSibling.style.display = 'flex';
+      }
+    });
+  }
+
+  function renderFeed(violations) {
+    const list = document.getElementById('feed-list');
+    if (!violations.length) {
+      list.innerHTML = '<div class="feed-empty">No violations yet 👍</div>';
+      return;
+    }
+    list.innerHTML = violations.slice(0, 30).map(v => {
+      const t = v.violation_type;
+      const timeStr = v.timestamp ? new Date(v.timestamp + 'Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+      return `<div class="feed-item ${t}">
+        <div class="feed-student">${fmtViolationIcon(t)} ${v.student_name}</div>
+        <div class="feed-detail">${fmtViolationType(t)} · ${v.exam_title}</div>
+        <div class="feed-time">${timeStr}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Modal ─────────────────────────────────────
+  function openModal(examId, studentId) {
+    currentModal = { examId, studentId };
+    const session = allSessions.find(s => s.exam_id === examId && s.student_id === studentId);
+    if (session) {
+      document.getElementById('modal-name').textContent = session.student_name;
+      document.getElementById('modal-sub').textContent = `${session.student_email} · ${session.exam_title}`;
+      document.getElementById('modal-face').textContent = session.face_count ?? '—';
+      document.getElementById('modal-viol').textContent = session.violations;
+      document.getElementById('modal-time').textContent = fmtTime(session.elapsed_seconds);
+    }
+    document.getElementById('modal-overlay').classList.add('show');
+    loadModalSnap();
+    snapRefreshInterval = setInterval(loadModalSnap, 3000);
+  }
+
+  async function loadModalSnap() {
+    if (!currentModal) return;
+    try {
+      const r = await fetch(`${API_BASE}/live/snapshot/${currentModal.examId}/${currentModal.studentId}`, { headers: authHeaders() });
+      if (!r.ok) return;
+      const d = await r.json();
+      const snap = d.snapshot;
+      document.getElementById('modal-snap-img').src = snap.startsWith('data:') ? snap : `data:image/jpeg;base64,${snap}`;
+      document.getElementById('modal-face').textContent = d.face_count ?? '—';
+      document.getElementById('modal-viol').textContent = d.violations ?? 0;
+    } catch(e) {}
+  }
+
+  function closeModal() {
+    document.getElementById('modal-overlay').classList.remove('show');
+    if (snapRefreshInterval) clearInterval(snapRefreshInterval);
+    currentModal = null;
+  }
+
+  async function terminateSession() {
+    if (!currentModal) return;
+    if (!confirm(`Force-terminate this student's exam?\n\nThey will be logged out and the exam will auto-submit.`)) return;
+    try {
+      const r = await fetch(`${API_BASE}/live/terminate/${currentModal.examId}/${currentModal.studentId}`, {
+        method: 'POST', headers: authHeaders()
+      });
+      const d = await r.json();
+      alert(d.message || 'Termination signal sent');
+      closeModal();
+      refresh();
+    } catch(e) {
+      alert('Failed to terminate: ' + e.message);
+    }
+  }
+
+  // Init
+  refresh();
+  refreshInterval = setInterval(refresh, 3000);
+
+  window.addEventListener('beforeunload', () => {
+    clearInterval(refreshInterval);
+    clearInterval(snapRefreshInterval);
+  });
+</script>
+</body>
+</html>

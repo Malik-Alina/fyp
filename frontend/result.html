@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ExamGuard — Result</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="styles.css"/>
+  <style>
+    body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; }
+    .result-card { width: 100%; max-width: 480px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 44px 40px; text-align: center; animation: fadeUp .5s ease both; }
+    .result-icon { font-size: 56px; margin-bottom: 16px; }
+    .result-verdict { font-family: 'DM Serif Display', serif; font-size: 32px; margin-bottom: 6px; }
+    .result-sub { font-size: 14px; color: var(--muted); margin-bottom: 32px; }
+    .score-wrap { display: flex; justify-content: center; margin-bottom: 28px; }
+    .score-ring { position: relative; width: 140px; height: 140px; }
+    .score-ring svg { transform: rotate(-90deg); }
+    .score-ring-bg { stroke: var(--border); fill: none; stroke-width: 8; }
+    .score-ring-fill { fill: none; stroke-width: 8; stroke-linecap: round; transition: stroke-dashoffset 1s ease; }
+    .score-text { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .score-num { font-family: 'DM Serif Display', serif; font-size: 32px; line-height: 1; }
+    .score-label { font-size: 11px; color: var(--muted); margin-top: 3px; }
+    .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
+    .stat-box { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+    .stat-val { font-family: 'DM Serif Display', serif; font-size: 20px; }
+    .stat-lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .viol-note { background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.2); border-radius: 10px; padding: 12px; margin-bottom: 24px; font-size: 13px; color: var(--danger); text-align: left; }
+    .logo { font-family: 'DM Serif Display', serif; font-size: 16px; margin-bottom: 24px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="logo">ExamGuard</div>
+  <div class="result-card">
+    <div class="result-icon" id="r-icon">⏳</div>
+    <div class="result-verdict" id="r-verdict">Loading...</div>
+    <div class="result-sub" id="r-sub"></div>
+
+    <div class="score-wrap">
+      <div class="score-ring">
+        <svg viewBox="0 0 140 140" width="140" height="140">
+          <circle class="score-ring-bg" cx="70" cy="70" r="58"/>
+          <circle class="score-ring-fill" id="ring-fill" cx="70" cy="70" r="58" stroke-dasharray="364.4" stroke-dashoffset="364.4"/>
+        </svg>
+        <div class="score-text">
+          <div class="score-num" id="r-pct">0%</div>
+          <div class="score-label">Score</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-box"><div class="stat-val" id="r-score">—</div><div class="stat-lbl">Score</div></div>
+      <div class="stat-box"><div class="stat-val" id="r-total">—</div><div class="stat-lbl">Total</div></div>
+      <div class="stat-box"><div class="stat-val" id="r-status">—</div><div class="stat-lbl">Status</div></div>
+    </div>
+
+    <div class="viol-note" id="viol-note" style="display:none">
+      ⚠️ <strong><span id="viol-count">0</span> proctoring violation(s)</strong> were recorded during this exam. Your teacher will be notified.
+    </div>
+
+    <button class="btn-full" onclick="downloadPDF()" style="background:var(--surface);color:var(--text);border:1px solid var(--border);margin-bottom:10px">📄 Download PDF Report</button>
+    <button class="btn-full" onclick="goHome()">← Back to Dashboard</button>
+  </div>
+
+<script src="config.js"></script>
+<script>
+  const result = JSON.parse(localStorage.getItem('last_result') || '{}');
+
+  if (!result.score && result.score !== 0) {
+    document.getElementById('r-verdict').textContent = 'No result found';
+    document.getElementById('r-icon').textContent = '❓';
+  } else {
+    const pct = result.percentage || Math.round(result.score / result.total_marks * 100);
+    const passed = result.passed !== undefined ? result.passed : pct >= 50;
+
+    document.getElementById('r-icon').textContent = passed ? '🎉' : '😔';
+    document.getElementById('r-verdict').textContent = passed ? 'Congratulations!' : 'Better luck next time';
+    document.getElementById('r-sub').textContent = result.examTitle || 'Exam completed';
+    document.getElementById('r-pct').textContent = `${pct}%`;
+    document.getElementById('r-score').textContent = result.score;
+    document.getElementById('r-total').textContent = result.total_marks;
+    document.getElementById('r-status').textContent = passed ? '✅ Pass' : '❌ Fail';
+
+    if (result.violations && result.violations > 0) {
+      document.getElementById('viol-count').textContent = result.violations;
+      document.getElementById('viol-note').style.display = 'block';
+    }
+
+    const color = passed ? '#4f8ef7' : '#f87171';
+    document.getElementById('ring-fill').style.stroke = color;
+
+    setTimeout(() => {
+      const circumference = 364.4;
+      const offset = circumference - (pct / 100) * circumference;
+      document.getElementById('ring-fill').style.strokeDashoffset = offset;
+    }, 200);
+  }
+
+  function goHome() {
+    localStorage.removeItem('current_exam');
+    localStorage.removeItem('last_result');
+    location.href = 'dashboard_student.html';
+  }
+
+  async function downloadPDF() {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const examInfo = JSON.parse(localStorage.getItem('current_exam') || '{}');
+    if (!user.user_id || !examInfo.examId) { alert('Missing exam info'); return; }
+    try {
+      const r = await fetch(`${API_BASE}/report/student/${examInfo.examId}/${user.user_id}.pdf`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}`, 'bypass-tunnel-reminder': 'true' }
+      });
+      if (!r.ok) throw new Error(await r.text());
+      const blob = await r.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `report_${(examInfo.title || 'exam').replace(/\s/g,'_')}.pdf`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch(e) { alert('Failed to download: ' + e.message); }
+  }
+</script>
+</body>
+</html>

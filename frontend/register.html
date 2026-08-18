@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ExamGuard — Register</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body class="auth-page">
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  <div class="auth-card">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <span class="logo-name">ExamGuard</span>
+    </div>
+
+    <h1>Create account</h1>
+    <p class="subtitle">Join as a student, teacher, or admin</p>
+
+    <div class="alert alert-error" id="err-msg"></div>
+    <div class="alert alert-success" id="ok-msg"></div>
+
+    <div class="section-label">I am a</div>
+    <div class="role-group">
+      <button class="role-btn active" data-role="student" onclick="setRole('student',this)">
+        <span class="role-icon">🎓</span> Student
+      </button>
+      <button class="role-btn" data-role="teacher" onclick="setRole('teacher',this)">
+        <span class="role-icon">📚</span> Teacher
+      </button>
+      <button class="role-btn" data-role="admin" onclick="setRole('admin',this)">
+        <span class="role-icon">🛡️</span> Admin
+      </button>
+    </div>
+
+    <form id="registerForm">
+      <div class="row-2">
+        <div class="field"><label>First name</label><input type="text" id="fname" placeholder="Alina" required/></div>
+        <div class="field"><label>Last name</label><input type="text" id="lname" placeholder="Khan" required/></div>
+      </div>
+      <div class="field"><label>Email address</label><input type="email" id="email" placeholder="you@university.edu" required/></div>
+      <div class="field"><label>Password</label><input type="password" id="password" placeholder="Min 6 characters" required minlength="6"/></div>
+      <div class="field"><label>Confirm password</label><input type="password" id="confirm" placeholder="Repeat password" required/></div>
+      <button class="btn-full" type="submit" id="regBtn">
+        <span id="btn-text">Create Account</span>
+        <div class="btn-loader" id="btn-loader"></div>
+      </button>
+    </form>
+
+    <div class="divider">or</div>
+    <div class="link-row">Already have an account? <a href="login.html">Sign in</a></div>
+  </div>
+
+<script src="config.js"></script>
+<script>
+  let selectedRole = 'student';
+  function setRole(role, el) {
+    selectedRole = role;
+    document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  const form = document.getElementById('registerForm');
+  const errMsg = document.getElementById('err-msg');
+  const okMsg = document.getElementById('ok-msg');
+  const regBtn = document.getElementById('regBtn');
+  const btnText = document.getElementById('btn-text');
+  const btnLoader = document.getElementById('btn-loader');
+
+  function showErr(msg) { errMsg.textContent = msg; errMsg.style.display = 'block'; okMsg.style.display = 'none'; }
+  function showOk(msg) { okMsg.textContent = msg; okMsg.style.display = 'block'; errMsg.style.display = 'none'; }
+  function loading(on) {
+    regBtn.disabled = on;
+    btnText.style.display = on ? 'none' : 'inline';
+    btnLoader.style.display = on ? 'block' : 'none';
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errMsg.style.display = 'none';
+    const fname = document.getElementById('fname').value.trim();
+    const lname = document.getElementById('lname').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const confirm = document.getElementById('confirm').value;
+    if (password !== confirm) return showErr('Passwords do not match');
+    if (password.length < 6) return showErr('Password must be at least 6 characters');
+    loading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/register`, {
+        method: 'POST', headers: baseHeaders(),
+        body: JSON.stringify({ name: `${fname} ${lname}`, email, password, role: selectedRole })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Registration failed');
+      showOk('Account created! Redirecting to login...');
+      setTimeout(() => location.href = 'login.html', 1200);
+    } catch (err) {
+      showErr(err.message);
+    } finally { loading(false); }
+  });
+</script>
+</body>
+</html>

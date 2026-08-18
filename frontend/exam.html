@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ExamGuard — Exam in Progress</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="styles.css"/>
+  <style>
+    /* Top bar */
+    .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+    .topbar-left{display:flex;align-items:center;gap:14px}
+    .exam-name-bar{font-size:15px;font-weight:500}
+
+    /* Timer */
+    .timer{display:flex;align-items:center;gap:8px;padding:8px 16px;border-radius:99px;background:var(--bg);border:1px solid var(--border);font-family:'DM Serif Display',serif;font-size:20px;letter-spacing:1px}
+    .timer.warn{border-color:var(--warn);color:var(--warn)}
+    .timer.danger{border-color:var(--danger);color:var(--danger);animation:pulse .8s ease infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+
+    /* Violation banner */
+    .violation-banner{display:none;position:fixed;top:62px;left:0;right:0;z-index:200;background:rgba(248,113,113,.12);border-bottom:1px solid rgba(248,113,113,.3);padding:10px 28px;color:var(--danger);font-size:13px;font-weight:500;text-align:center}
+
+    /* Progress bar */
+    .progress-wrap{padding:0 28px;background:var(--surface);border-bottom:1px solid var(--border)}
+    .progress-inner{height:3px;background:var(--border);border-radius:99px;overflow:hidden}
+    .progress-fill{height:100%;background:var(--accent);transition:width .4s}
+
+    /* Layout */
+    .exam-layout{display:grid;grid-template-columns:220px 1fr 280px;min-height:calc(100vh - 120px)}
+
+    /* Question nav */
+    .q-nav{background:var(--surface);border-right:1px solid var(--border);padding:20px 14px;overflow-y:auto}
+    .q-nav h3{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px}
+    .q-nav-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+    .q-dot{width:36px;height:36px;border-radius:8px;border:1px solid var(--border);background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;color:var(--muted);transition:all .15s}
+    .q-dot:hover{border-color:var(--accent);color:var(--accent)}
+    .q-dot.answered{background:rgba(79,142,247,.15);border-color:var(--accent);color:var(--accent)}
+    .q-dot.current{background:var(--accent);border-color:var(--accent);color:#fff}
+
+    /* Main question area */
+    .q-main{padding:32px;overflow-y:auto}
+    .q-header{display:flex;align-items:center;gap:10px;margin-bottom:24px}
+    .q-num-badge{background:var(--accent);color:#fff;font-size:12px;font-weight:500;padding:4px 10px;border-radius:6px}
+    .q-total{font-size:13px;color:var(--muted)}
+    .q-text{font-size:18px;font-family:'DM Serif Display',serif;font-weight:400;line-height:1.5;margin-bottom:28px}
+    .options{display:flex;flex-direction:column;gap:10px;margin-bottom:32px}
+    .option{display:flex;align-items:center;gap:14px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:all .15s;user-select:none}
+    .option:hover{border-color:var(--accent)}
+    .option.selected{border-color:var(--accent);background:rgba(79,142,247,.08)}
+    .option-letter{width:28px;height:28px;border-radius:7px;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;flex-shrink:0;transition:all .15s}
+    .option.selected .option-letter{background:var(--accent);color:#fff}
+    .option-text{font-size:14px}
+    .q-controls{display:flex;justify-content:space-between;align-items:center}
+    .btn-secondary{padding:10px 20px;border:1px solid var(--border);background:none;color:var(--muted);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer;transition:all .2s}
+    .btn-secondary:hover{border-color:var(--accent);color:var(--text)}
+    .btn-secondary:disabled{opacity:.3;cursor:not-allowed}
+    .btn-submit{padding:10px 24px;background:#ef4444;color:#fff;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;cursor:pointer}
+    .btn-submit:hover{background:#dc2626}
+
+    /* ─── PROCTORING PANEL (Module 3) ─── */
+    .proctor-panel{background:var(--surface);border-left:1px solid var(--border);padding:20px;display:flex;flex-direction:column;gap:14px;overflow-y:auto}
+    .panel-header{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+    .panel-header::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--success);animation:pulse 2s ease infinite}
+    .webcam-box{position:relative;width:100%;aspect-ratio:4/3;background:#000;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+    .webcam-box video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+    .webcam-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;text-align:center;padding:14px}
+    .status-row{display:flex;align-items:center;gap:8px;font-size:12px;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px}
+    .status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+    .status-dot.ok{background:var(--success)}
+    .status-dot.warn{background:var(--warn)}
+    .status-dot.danger{background:var(--danger)}
+    .status-label{color:var(--muted)}
+    .status-value{margin-left:auto;color:var(--text);font-weight:500}
+
+    .warning-list{display:flex;flex-direction:column;gap:6px;font-size:11px}
+    .warning-item{display:flex;justify-content:space-between;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--muted)}
+    .warning-item .count{color:var(--text);font-weight:500}
+    .warning-item.has{border-color:rgba(248,113,113,.3);color:var(--danger)}
+
+    .info-text{font-size:11px;color:var(--muted);line-height:1.5}
+
+    /* Modal */
+    .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;align-items:center;justify-content:center}
+    .overlay.show{display:flex}
+    .modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px;max-width:420px;width:90%;text-align:center}
+    .modal h2{font-family:'DM Serif Display',serif;font-size:24px;margin-bottom:10px}
+    .modal p{color:var(--muted);font-size:14px;margin-bottom:24px;line-height:1.6}
+    .modal-btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+
+    /* Permission overlay */
+    .perm-overlay{position:fixed;inset:0;background:var(--bg);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px}
+    .perm-card{max-width:480px;text-align:center;padding:40px}
+    .perm-icon{font-size:56px;margin-bottom:16px}
+    .perm-card h2{font-family:'DM Serif Display',serif;font-size:28px;margin-bottom:10px}
+    .perm-card p{color:var(--muted);font-size:14px;margin-bottom:24px;line-height:1.6}
+    .perm-rules{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:24px;text-align:left}
+    .perm-rule{display:flex;align-items:start;gap:10px;font-size:13px;margin-bottom:10px;color:var(--muted)}
+    .perm-rule:last-child{margin-bottom:0}
+    .perm-rule .icon{font-size:16px;flex-shrink:0;margin-top:1px}
+    .perm-error{display:none;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:var(--danger);padding:12px;border-radius:8px;font-size:13px;margin-bottom:16px}
+  </style>
+</head>
+<body>
+
+<!-- Permission overlay (shown first) -->
+<div class="perm-overlay" id="perm-overlay">
+  <div class="perm-card">
+    <div class="perm-icon">📷</div>
+    <h2>Webcam Access Required</h2>
+    <p>This exam is proctored. AI will continuously monitor your webcam to ensure exam integrity.</p>
+
+    <div class="perm-rules">
+      <div class="perm-rule"><span class="icon">👁️</span><div><strong>Stay in frame</strong> — your face must be clearly visible the entire time</div></div>
+      <div class="perm-rule"><span class="icon">👤</span><div><strong>You alone</strong> — multiple people detected will be flagged</div></div>
+      <div class="perm-rule"><span class="icon">🚫</span><div><strong>No tab switching</strong> — leaving this tab is logged as a violation</div></div>
+      <div class="perm-rule"><span class="icon">⚠️</span><div><strong>3 violations</strong> = exam auto-submits</div></div>
+    </div>
+
+    <div class="perm-error" id="perm-error"></div>
+    <button class="btn-full" onclick="requestWebcam()" id="grant-btn">Grant Webcam Access & Start</button>
+  </div>
+</div>
+
+<!-- Violation banner -->
+<div class="violation-banner" id="violation-banner">
+  ⚠️ <span id="violation-text">Violation detected!</span>
+</div>
+
+<!-- Top Bar -->
+<div class="topbar">
+  <div class="topbar-left">
+    <div style="font-family:'DM Serif Display',serif;font-size:16px">ExamGuard</div>
+    <div class="exam-name-bar" id="exam-name-bar">Exam</div>
+  </div>
+  <div class="timer" id="timer">⏱ <span id="timer-display">--:--</span></div>
+</div>
+
+<!-- Progress -->
+<div class="progress-wrap">
+  <div class="progress-inner"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+</div>
+
+<!-- 3-column layout -->
+<div class="exam-layout">
+
+  <!-- Question nav -->
+  <div class="q-nav">
+    <h3>Questions</h3>
+    <div class="q-nav-grid" id="q-nav-grid"></div>
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)">
+      <div style="margin-bottom:8px;font-weight:500;color:var(--text);font-size:11px;text-transform:uppercase;letter-spacing:1px">Legend</div>
+      <div style="display:flex;flex-direction:column;gap:5px">
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--accent);border-radius:3px;margin-right:6px"></span>Current</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:rgba(79,142,247,.15);border:1px solid var(--accent);border-radius:3px;margin-right:6px"></span>Answered</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--bg);border:1px solid var(--border);border-radius:3px;margin-right:6px"></span>Not answered</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="q-main" id="q-main">
+    <div class="loading"><div class="spinner"></div>Loading exam...</div>
+  </div>
+
+  <!-- AI Proctoring panel -->
+  <div class="proctor-panel">
+    <div class="panel-header">AI Proctoring Active</div>
+
+    <div class="webcam-box">
+      <video id="webcam" autoplay playsinline muted></video>
+      <div class="webcam-overlay" id="webcam-overlay">Webcam loading...</div>
+    </div>
+
+    <div class="status-row">
+      <div class="status-dot ok" id="face-dot"></div>
+      <span class="status-label">Face detection</span>
+      <span class="status-value" id="face-status">—</span>
+    </div>
+
+    <div class="status-row">
+      <div class="status-dot ok" id="tab-dot"></div>
+      <span class="status-label">Tab focus</span>
+      <span class="status-value" id="tab-status">Active</span>
+    </div>
+
+    <div>
+      <div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px">Violations</div>
+      <div class="warning-list">
+        <div class="warning-item" id="w-no-face"><span>No face detected</span><span class="count">0</span></div>
+        <div class="warning-item" id="w-multi-face"><span>Multiple faces</span><span class="count">0</span></div>
+        <div class="warning-item" id="w-tab-switch"><span>Tab switch</span><span class="count">0</span></div>
+      </div>
+    </div>
+
+    <div class="info-text">
+      📌 Face checks every 5 seconds<br>
+      🚨 3 violations = auto submit<br>
+      ⏱ Timer is server-enforced
+    </div>
+  </div>
+
+</div>
+
+<!-- Submit Modal -->
+<div class="overlay" id="submit-overlay">
+  <div class="modal">
+    <div style="font-size:36px;margin-bottom:12px">📤</div>
+    <h2>Submit Exam?</h2>
+    <p>You've answered <strong id="modal-answered">0</strong> of <strong id="modal-total">0</strong> questions.<br>This cannot be undone.</p>
+    <div class="modal-btns">
+      <button class="btn-secondary" onclick="closeModal()">Go Back</button>
+      <button class="btn-submit" onclick="submitExam()">Submit Now</button>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+  const user = requireAuth(['student']);
+  const examInfo = JSON.parse(localStorage.getItem('current_exam') || '{}');
+  if (!examInfo.examId) { location.href = 'dashboard_student.html'; }
+
+  let questions = [], answers = {}, currentQ = 0;
+  let timerInterval = null, secondsLeft = 0;
+  let submitted = false;
+  let stream = null, proctorInterval = null;
+
+  // Violation counters
+  const violations = { no_face: 0, multiple_faces: 0, tab_switch: 0 };
+  function totalViolations() { return violations.no_face + violations.multiple_faces + violations.tab_switch; }
+
+  // ── Step 1: Request webcam ───────────────────────────────
+  async function requestWebcam() {
+    const errEl = document.getElementById('perm-error');
+    errEl.style.display = 'none';
+    document.getElementById('grant-btn').disabled = true;
+    document.getElementById('grant-btn').textContent = 'Requesting permission...';
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false
+      });
+      document.getElementById('webcam').srcObject = stream;
+      document.getElementById('webcam-overlay').style.display = 'none';
+      document.getElementById('perm-overlay').style.display = 'none';
+      // Now load the exam
+      loadExam();
+    } catch (err) {
+      errEl.textContent = '❌ Webcam access denied: ' + err.message + '. Please allow access and try again.';
+      errEl.style.display = 'block';
+      document.getElementById('grant-btn').disabled = false;
+      document.getElementById('grant-btn').textContent = 'Try Again';
+    }
+  }
+
+  // ── Tab switch detection ─────────────────────────────────
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && !submitted && stream) {
+      violations.tab_switch++;
+      updateViolationUI('tab_switch');
+      document.getElementById('tab-dot').className = 'status-dot danger';
+      document.getElementById('tab-status').textContent = 'Switched!';
+      logServerViolation('tab_switch');
+      showBanner(`Tab switch detected! Violation ${totalViolations()}/3`);
+      if (totalViolations() >= 3) autoSubmit('3 violations reached');
+    } else if (!document.hidden) {
+      document.getElementById('tab-dot').className = 'status-dot ok';
+      document.getElementById('tab-status').textContent = 'Active';
+    }
+  });
+
+  function showBanner(msg) {
+    const banner = document.getElementById('violation-banner');
+    document.getElementById('violation-text').textContent = msg;
+    banner.style.display = 'block';
+    setTimeout(() => { if (totalViolations() < 3) banner.style.display = 'none'; }, 4000);
+  }
+
+  function updateViolationUI(type) {
+    const map = { no_face: 'w-no-face', multiple_faces: 'w-multi-face', tab_switch: 'w-tab-switch' };
+    const el = document.getElementById(map[type]);
+    el.querySelector('.count').textContent = violations[type];
+    el.classList.add('has');
+  }
+
+  // ── Server violation logging ─────────────────────────────
+  async function logServerViolation(vtype) {
+    try {
+      await fetch(`${API_BASE}/proctor/log`, {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ exam_id: examInfo.examId, violation_type: vtype })
+      });
+    } catch(e) { console.warn('Could not log violation:', e); }
+  }
+
+  // ── Face detection loop (every 5 seconds) ────────────────
+  function startProctoring() {
+    proctorInterval = setInterval(captureAndCheck, 5000);
+    // Initial check after 2s
+    setTimeout(captureAndCheck, 2000);
+  }
+
+  async function captureAndCheck() {
+    if (submitted || !stream) return;
+    try {
+      const video = document.getElementById('webcam');
+      const canvas = document.createElement('canvas');
+      canvas.width = 320; canvas.height = 240;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+
+      const r = await fetch(`${API_BASE}/proctor/check`, {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ exam_id: examInfo.examId, image: dataUrl })
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+
+      // ── Module 4: check if teacher force-terminated ──
+      if (data.force_end) {
+        autoSubmit('Your exam was terminated by the instructor');
+        return;
+      }
+
+      // Update UI based on detection
+      const dot = document.getElementById('face-dot');
+      const status = document.getElementById('face-status');
+
+      if (data.face_count === 1) {
+        dot.className = 'status-dot ok';
+        status.textContent = '1 face ✓';
+      } else if (data.face_count === 0) {
+        dot.className = 'status-dot danger';
+        status.textContent = 'No face';
+        violations.no_face++;
+        updateViolationUI('no_face');
+        showBanner(`No face detected! Violation ${totalViolations()}/3`);
+      } else if (data.face_count > 1) {
+        dot.className = 'status-dot danger';
+        status.textContent = `${data.face_count} faces!`;
+        violations.multiple_faces++;
+        updateViolationUI('multiple_faces');
+        showBanner(`Multiple faces detected! Violation ${totalViolations()}/3`);
+      } else {
+        dot.className = 'status-dot warn';
+        status.textContent = 'Detection error';
+      }
+
+      if (totalViolations() >= 3) autoSubmit('3 violations reached');
+    } catch(e) {
+      console.warn('Proctor check failed:', e);
+    }
+  }
+
+  // ── Load exam ─────────────────────────────────────────────
+  async function loadExam() {
+    document.getElementById('exam-name-bar').textContent = examInfo.title;
+    try {
+      const r = await fetch(`${API_BASE}/exam/${examInfo.examId}`, { headers: authHeaders() });
+      if (!r.ok) throw new Error('Failed to load exam');
+      const data = await r.json();
+      questions = data.questions;
+      if (!questions.length) {
+        document.getElementById('q-main').innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">This exam has no questions yet.</div>';
+        return;
+      }
+      buildNavGrid();
+      showQuestion(0);
+      startTimer(examInfo.duration * 60);
+      startProctoring();
+    } catch(e) {
+      document.getElementById('q-main').innerHTML = `<div style="padding:40px;text-align:center;color:var(--danger)">${e.message}</div>`;
+    }
+  }
+
+  function buildNavGrid() {
+    document.getElementById('q-nav-grid').innerHTML = questions.map((q, i) =>
+      `<div class="q-dot ${i===0?'current':''}" id="dot-${i}" onclick="showQuestion(${i})">${i+1}</div>`
+    ).join('');
+  }
+
+  function updateDots() {
+    questions.forEach((q, i) => {
+      const dot = document.getElementById(`dot-${i}`);
+      dot.className = 'q-dot';
+      if (i === currentQ) dot.classList.add('current');
+      else if (answers[q.question_id]) dot.classList.add('answered');
+    });
+    const answered = Object.keys(answers).length;
+    document.getElementById('progress-fill').style.width = `${(answered / questions.length) * 100}%`;
+  }
+
+  function showQuestion(idx) {
+    currentQ = idx;
+    const q = questions[idx];
+    const selected = answers[q.question_id];
+    const opts = [
+      { key: 'a', text: q.option_a }, { key: 'b', text: q.option_b },
+      { key: 'c', text: q.option_c }, { key: 'd', text: q.option_d }
+    ];
+    document.getElementById('q-main').innerHTML = `
+      <div class="q-header">
+        <span class="q-num-badge">Q${idx+1}</span>
+        <span class="q-total">of ${questions.length}</span>
+      </div>
+      <div class="q-text">${q.question_text}</div>
+      <div class="options">
+        ${opts.map(o => `
+          <div class="option ${selected===o.key?'selected':''}" onclick="selectAnswer(${q.question_id},'${o.key}',${idx})">
+            <div class="option-letter">${o.key.toUpperCase()}</div>
+            <div class="option-text">${o.text}</div>
+          </div>`).join('')}
+      </div>
+      <div class="q-controls">
+        <button class="btn-secondary" onclick="showQuestion(${idx-1})" ${idx===0?'disabled':''}>← Previous</button>
+        <span style="font-size:13px;color:var(--muted)">${Object.keys(answers).length}/${questions.length} answered</span>
+        ${idx < questions.length - 1
+          ? `<button class="btn-primary" onclick="showQuestion(${idx+1})">Next →</button>`
+          : `<button class="btn-submit" onclick="openModal()">Submit Exam</button>`}
+      </div>`;
+    updateDots();
+  }
+
+  function selectAnswer(qId, key, idx) {
+    answers[qId] = key;
+    showQuestion(idx);
+  }
+
+  function startTimer(seconds) {
+    secondsLeft = seconds;
+    updateTimerDisplay();
+    timerInterval = setInterval(() => {
+      secondsLeft--;
+      updateTimerDisplay();
+      if (secondsLeft <= 0) { clearInterval(timerInterval); autoSubmit('Time is up!'); }
+    }, 1000);
+  }
+
+  function updateTimerDisplay() {
+    const m = Math.floor(secondsLeft / 60).toString().padStart(2,'0');
+    const s = (secondsLeft % 60).toString().padStart(2,'0');
+    document.getElementById('timer-display').textContent = `${m}:${s}`;
+    const el = document.getElementById('timer');
+    el.className = 'timer';
+    if (secondsLeft <= 60) el.classList.add('danger');
+    else if (secondsLeft <= 300) el.classList.add('warn');
+  }
+
+  function openModal() {
+    document.getElementById('modal-answered').textContent = Object.keys(answers).length;
+    document.getElementById('modal-total').textContent = questions.length;
+    document.getElementById('submit-overlay').classList.add('show');
+  }
+  function closeModal() { document.getElementById('submit-overlay').classList.remove('show'); }
+
+  async function autoSubmit(reason) {
+    if (submitted) return;
+    clearInterval(timerInterval);
+    clearInterval(proctorInterval);
+    showBanner(reason + ' — auto submitting...');
+    setTimeout(submitExam, 1500);
+  }
+
+  async function submitExam() {
+    if (submitted) return;
+    submitted = true;
+    clearInterval(timerInterval);
+    clearInterval(proctorInterval);
+    closeModal();
+    // Stop webcam
+    if (stream) stream.getTracks().forEach(t => t.stop());
+
+    document.getElementById('q-main').innerHTML = '<div class="loading"><div class="spinner"></div>Submitting...</div>';
+    const payload = {};
+    Object.entries(answers).forEach(([k, v]) => { payload[k] = v; });
+
+    try {
+      const r = await fetch(`${API_BASE}/exam/${examInfo.examId}/submit`, {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ answers: payload })
+      });
+      const data = await r.json();
+      if (!r.ok && r.status !== 409) throw new Error(data.message);
+      localStorage.setItem('last_result', JSON.stringify({ ...data, examTitle: examInfo.title, violations: totalViolations() }));
+      location.href = 'result.html';
+    } catch(e) {
+      document.getElementById('q-main').innerHTML = `<div style="padding:40px;text-align:center;color:var(--danger)">Submit failed: ${e.message}</div>`;
+    }
+  }
+
+  // Don't load exam until webcam is granted (handled in requestWebcam)
+</script>
+</body>
+</html>
